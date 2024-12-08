@@ -1,0 +1,90 @@
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.preprocessing import image
+import numpy as np
+import matplotlib.pyplot as plt
+
+# dataset "Cats vs Dogs"
+dataset_url = "https://storage.googleapis.com/mledu-datasets/cats_and_dogs_filtered.zip"
+zip_file = tf.keras.utils.get_file("cats_and_dogs.zip", origin=dataset_url, extract=True)
+base_dir = zip_file.replace("cats_and_dogs.zip", "cats_and_dogs_filtered")
+
+train_dir = f"{base_dir}/train"
+validation_dir = f"{base_dir}/validation"
+
+IMG_SIZE = 224  
+BATCH_SIZE = 32
+
+# dataset usando ImageDataGenerator
+train_datagen = ImageDataGenerator(
+    rescale=1.0/255,
+    rotation_range=20,
+    width_shift_range=0.2,
+    height_shift_range=0.2,
+    shear_range=0.2,
+    zoom_range=0.2,
+    horizontal_flip=True
+)
+
+validation_datagen = ImageDataGenerator(rescale=1.0/255)
+
+train_generator = train_datagen.flow_from_directory(
+    train_dir,
+    target_size=(IMG_SIZE, IMG_SIZE),
+    batch_size=BATCH_SIZE,
+    class_mode='binary'  
+)
+
+validation_generator = validation_datagen.flow_from_directory(
+    validation_dir,
+    target_size=(IMG_SIZE, IMG_SIZE),
+    batch_size=BATCH_SIZE,
+    class_mode='binary'
+)
+
+# Carregar o modelo pré-treinado (MobileNetV2)
+base_model = tf.keras.applications.MobileNetV2(input_shape=(IMG_SIZE, IMG_SIZE, 3),
+     include_top=False,  
+     weights='imagenet')
+
+base_model.trainable = False
+
+model = Sequential([
+    base_model,
+    GlobalAveragePooling2D(),
+    Dense(1, activation='sigmoid')  
+])
+
+model.compile(optimizer='adam',
+              loss='binary_crossentropy',
+              metrics=['accuracy'])
+
+# Treinamento
+history = model.fit(
+    train_generator,
+    validation_data=validation_generator,
+    epochs=5,  # Ajuste conforme necessário
+    steps_per_epoch=train_generator.samples // BATCH_SIZE,
+    validation_steps=validation_generator.samples // BATCH_SIZE
+)
+
+loss, accuracy = model.evaluate(validation_generator)
+print(f"Loss: {loss}")
+print(f"Accuracy: {accuracy}")
+
+
+def predict_image(image_path):
+    img = image.load_img(image_path, target_size=(IMG_SIZE, IMG_SIZE))
+    img_array = image.img_to_array(img) / 255.0  
+    img_array = np.expand_dims(img_array, axis=0)  
+    prediction = model.predict(img_array)
+    class_label = 'Cat' if prediction[0][0] < 0.5 else 'Dog'
+    plt.imshow(img)
+    plt.title(f"Prediction: {class_label}")
+    plt.axis('off')
+    plt.show()
+
+image_path = f"{validation_dir}/cats/cat.2000.jpg"  
+predict_image(image_path)
